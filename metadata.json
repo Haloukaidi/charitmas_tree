@@ -1,6 +1,6 @@
 {
   "name": "christmas-tree",
-  "description": "An interactive 3D Christmas tree with gesture control and photo ornaments.",
+  "description": "🎄 一个带有手势控制和照片挂饰的互动 3D 圣诞树 ✨",
   "requestFramePermissions": [
     "camera"
   ]

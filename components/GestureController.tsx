@@ -1,3 +1,4 @@
+
 import { useEffect, useRef } from 'react';
 import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 import { GestureControllerProps } from '../types';
@@ -11,7 +12,7 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: GestureCo
     let requestRef: number;
 
     const setup = async () => {
-      onStatus("DOWNLOADING AI...");
+      onStatus("正在下载 AI 模型... 🤖");
       try {
         const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
         gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
@@ -22,21 +23,21 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: GestureCo
           runningMode: "VIDEO",
           numHands: 1
         });
-        onStatus("REQUESTING CAMERA...");
+        onStatus("请求摄像头权限... 📷");
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
             videoRef.current.play();
-            onStatus("AI READY: SHOW HAND");
+            onStatus("AI 准备就绪：请展示你的手掌 👋");
             predictWebcam();
           }
         } else {
-            onStatus("ERROR: CAMERA PERMISSION DENIED");
+            onStatus("错误：无法获取摄像头权限 🚫");
         }
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown Error';
-        onStatus(`ERROR: ${errorMessage || 'MODEL FAILED'}`);
+        const errorMessage = err instanceof Error ? err.message : '未知错误';
+        onStatus(`错误：${errorMessage || '模型加载失败 ⚠️'}`);
       }
     };
 
@@ -62,13 +63,15 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: GestureCo
               if (score > 0.4) {
                  if (name === "Open_Palm") onGesture("CHAOS"); 
                  if (name === "Closed_Fist") onGesture("FORMED");
-                 if (debugMode) onStatus(`DETECTED: ${name}`);
+                 
+                 const displayName = name === "Open_Palm" ? "张开手掌 🖐️" : name === "Closed_Fist" ? "握拳 ✊" : name;
+                 if (debugMode) onStatus(`检测到：${displayName} ✨`);
               }
               if (results.landmarks.length > 0) {
                 const speed = (0.5 - results.landmarks[0][0].x) * 0.15;
                 onMove(Math.abs(speed) > 0.01 ? speed : 0);
               }
-            } else { onMove(0); if (debugMode) onStatus("AI READY: NO HAND"); }
+            } else { onMove(0); if (debugMode) onStatus("AI 待机中：未检测到手势 😴"); }
         }
         requestRef = requestAnimationFrame(predictWebcam);
       }
