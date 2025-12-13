@@ -1,3 +1,4 @@
+
 // --- 视觉配置 ---
 export const CONFIG = {
   colors: {
@@ -17,15 +18,46 @@ export const CONFIG = {
   },
   counts: {
     foliage: 15000,
-    ornaments: 20,   // 拍立得照片数量 (Position points)
+    ornaments: 20,    // 设定总挂饰位置数量 (N)
     elements: 500,    // 圣诞元素数量
     lights: 400       // 彩灯数量
   },
   tree: { height: 22, radius: 9 }, // 树体尺寸
+  
+  // --- 音乐配置 ---
+  music: {
+    // 请在 public/music/ 文件夹下放入音乐文件，并在此处列出文件名
+    // 如果数组为空 []，则不显示音乐按钮
+    // 示例: tracks: ['/music/bgm1.mp3']
+    tracks: [
+       '/photos/1.jpg',
+       '/photos/2.jpg',
+       '/photos/3.jpg']
+  },
+
+  // --- 照片配置 ---
   photos: {
-    // 这里的数量决定了尝试加载多少张不同的图片
-    // 请确保 public/photos/ 文件夹下有对应的 1.jpg 到 15.jpg
-    body: Array.from({ length: 15 }, (_, i) => `/photos/${i + 1}.jpg`)
+    // 请在 public/photos/ 文件夹下放入照片，并在此处列出文件名
+    // 逻辑说明：
+    // 1. 如果 files 数量 < counts.ornaments：有多少张显示多少张，其余显示空白相纸。
+    // 2. 如果 files 数量 > counts.ornaments：仅显示前 N 张。
+    files: [
+       '/photos/1.jpg',
+       '/photos/2.jpg',
+       '/photos/3.jpg',
+       '/photos/4.jpg',
+       '/photos/5.jpg',
+       '/photos/6.jpg',
+       '/photos/7.jpg',
+       '/photos/8.jpg',
+       '/photos/9.jpg',
+       '/photos/10.jpg',
+       '/photos/11.jpg',
+       '/photos/12.jpg',
+       '/photos/13.jpg',
+       '/photos/14.jpg',
+       '/photos/15.jpg'
+    ]
   }
 };
 

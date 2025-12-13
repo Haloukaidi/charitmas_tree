@@ -1,11 +1,9 @@
+
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree, ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MathUtils } from 'three';
-
-// ⚠️ NOTE: Replace this URL with your local file path (e.g., "/music/Merry_Christmas_Mr_Lawrence.mp3")
-// We use a reliable Google-hosted Jingle Bells OGG as a placeholder to prevent "no supported sources" errors.
-const MUSIC_URL = "https://actions.google.com/sounds/v1/holidays/jingle_bells.ogg";
+import { CONFIG } from '../constants';
 
 // --- Ice Material Reusable Instance ---
 const iceMaterial = new THREE.MeshPhysicalMaterial({
@@ -49,7 +47,7 @@ const IceSnowflake = ({ playing }: { playing: boolean }) => {
   // Create 6 branches
   const branches = useMemo(() => {
     return [0, 60, 120, 180, 240, 300].map((angle) => (
-      <SnowflakeBranch key={angle} rotation={[0, 0, MathUtils.degToRad(angle)]} />
+      <SnowflakeBranch key={angle} rotation={[0, 0, MathUtils.degToRad(angle)] as [number, number, number]} />
     ));
   }, []);
 
@@ -100,24 +98,60 @@ const MusicButton = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const buttonGroupRef = useRef<THREE.Group>(null);
   const { viewport } = useThree();
+  
+  const tracks = CONFIG.music.tracks;
+
+  // 如果没有音乐文件，直接不渲染组件
+  if (!tracks || tracks.length === 0) {
+      return null;
+  }
+
+  // 随机选择下一首歌的索引
+  const pickRandomTrackIndex = () => {
+    return Math.floor(Math.random() * tracks.length);
+  };
 
   useEffect(() => {
-    audioRef.current = new Audio(MUSIC_URL);
-    audioRef.current.loop = true;
-    audioRef.current.volume = 0.6;
-    
-    // Handle loading errors just in case
-    audioRef.current.onerror = () => {
-        console.warn("Audio failed to load. Please check the URL or your network.");
+    // 初始化 Audio 对象
+    const audio = new Audio();
+    audio.volume = 0.6;
+    audioRef.current = audio;
+
+    const playNext = () => {
+        const nextIndex = pickRandomTrackIndex();
+        audio.src = tracks[nextIndex];
+        const promise = audio.play();
+        if (promise !== undefined) {
+             promise.catch(e => {
+                 console.warn("Auto-play next track failed:", e);
+                 setPlaying(false);
+             });
+        }
     };
 
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+    const handleError = (e: Event) => {
+        console.warn("Audio source error:", audio.src);
+        setPlaying(false);
     };
-  }, []);
+
+    // 监听播放结束事件，实现随机循环
+    audio.addEventListener('ended', playNext);
+    audio.addEventListener('error', handleError);
+    
+    // 初始化第一首（但不自动播放，等待用户点击）
+    try {
+        audio.src = tracks[pickRandomTrackIndex()];
+    } catch (e) {
+        console.warn("Failed to set audio src", e);
+    }
+
+    return () => {
+      audio.pause();
+      audio.removeEventListener('ended', playNext);
+      audio.removeEventListener('error', handleError);
+      audioRef.current = null;
+    };
+  }, [tracks]);
 
   const toggleMusic = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
@@ -125,20 +159,28 @@ const MusicButton = () => {
 
     if (playing) {
       audioRef.current.pause();
+      setPlaying(false);
     } else {
-      audioRef.current.play().catch(err => {
-          console.error("Audio playback failed:", err);
-      });
+      // 如果当前没有源或者刚刚初始化，可能需要确保 src 存在
+      if (!audioRef.current.src) {
+         audioRef.current.src = tracks[pickRandomTrackIndex()];
+      }
+      
+      const promise = audioRef.current.play();
+      if (promise !== undefined) {
+        promise.then(() => {
+            setPlaying(true);
+        }).catch(err => {
+            console.warn("Audio playback failed (likely missing file):", err);
+            setPlaying(false);
+            // 这里不抛出错误，而是静默失败，避免控制台红字报错干扰体验
+        });
+      }
     }
-    setPlaying(!playing);
   };
 
   // --- Positioning Logic ---
-  // We place this in the HUD (Camera Group).
-  // We want it top-right.
   const dist = 10;
-  // Calculate visible width/height at that distance for the camera
-  // fov = 45 default
   const vHeight = 2 * Math.tan(MathUtils.degToRad(45) / 2) * dist;
   const vWidth = vHeight * viewport.aspect;
 

@@ -1,6 +1,7 @@
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
+import { Loader } from '@react-three/drei';
 import * as THREE from 'three';
 import { CONFIG } from './constants';
 import Experience from './components/Experience';
@@ -13,20 +14,37 @@ export default function App() {
   const [rotationSpeed, setRotationSpeed] = useState(0);
   const [aiStatus, setAiStatus] = useState("正在唤醒圣诞魔法... ✨");
   const [debugMode, setDebugMode] = useState(false);
-  const [zoomed, setZoomed] = useState(false);
+  const [zoomed, setZoomed] = useState(false); // UI state (is currently zoomed?)
+  const [gestureZoomRequest, setGestureZoomRequest] = useState(false); // Input state (user wants to zoom?)
 
   return (
     <div className="relative w-screen h-screen bg-black overflow-hidden">
       <div className="absolute top-0 left-0 w-full h-full z-0">
         <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
+          <Suspense fallback={null}>
             <Experience 
               state={sceneState} 
               rotationSpeed={rotationSpeed} 
-              setZoomed={setZoomed} 
+              setZoomed={setZoomed}
+              zoomRequest={gestureZoomRequest}
             />
+          </Suspense>
         </Canvas>
+        <Loader 
+          dataInterpolation={(p) => `Loading ${p.toFixed(0)}%`} 
+          containerStyles={{ background: '#111111' }} 
+          innerStyles={{ width: '200px', height: '10px', background: '#333' }}
+          barStyles={{ height: '10px', background: '#FFD700' }}
+          dataStyles={{ color: '#FFD700', fontSize: '12px', fontFamily: 'monospace', marginTop: '10px' }}
+        />
       </div>
-      <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} />
+      <GestureController 
+        onGesture={setSceneState} 
+        onMove={setRotationSpeed} 
+        onStatus={setAiStatus} 
+        onZoomRequest={setGestureZoomRequest}
+        debugMode={debugMode} 
+      />
 
       {/* UI - Stats */}
       <div className={`absolute bottom-8 left-10 text-gray-400 z-10 font-sans select-none transition-opacity duration-500 ${zoomed ? 'opacity-0' : 'opacity-100'}`}>

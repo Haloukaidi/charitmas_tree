@@ -31,60 +31,62 @@ const createPlaceholderTexture = () => {
   return texture;
 };
 
-const PhotoOrnaments = ({ state, rotationSpeed = 0, setZoomed }: PhotoOrnamentsProps) => {
-  const texturePaths = CONFIG.photos.body;
-  const count = CONFIG.counts.ornaments;
+const PhotoOrnaments = ({ state, rotationSpeed = 0, setZoomed, zoomRequest = false }: PhotoOrnamentsProps) => {
+  const fileList = CONFIG.photos.files;
+  const totalSlots = CONFIG.counts.ornaments;
   const groupRef = useRef<THREE.Group>(null);
   
-  // --- ROBUST TEXTURE LOADING LOGIC ---
-  // 1. Start with placeholders for all expected textures
+  // --- TEXTURE LOADING LOGIC ---
+  // 1. Initialize all slots with placeholder textures
   const [textures, setTextures] = useState<THREE.Texture[]>(() => {
     const placeholder = createPlaceholderTexture();
-    return new Array(texturePaths.length).fill(placeholder);
+    return new Array(totalSlots).fill(placeholder);
   });
 
   // 2. Track which indices are REAL photos (loaded successfully)
   const loadedIndicesRef = useRef<Set<number>>(new Set());
 
-  // 3. Attempt to load real images in the background
   useEffect(() => {
     const loader = new THREE.TextureLoader();
     
-    texturePaths.forEach((path, index) => {
-      // Add cache buster to force re-fetch if file changed
-      const versionedPath = `${path}?v=${Date.now()}`;
-      
-      loader.load(
-        versionedPath,
-        (loadedTexture) => {
-          // ON SUCCESS
-          loadedTexture.colorSpace = THREE.SRGBColorSpace;
-          
-          setTextures((prev) => {
-            const newTextures = [...prev];
-            newTextures[index] = loadedTexture;
-            return newTextures;
-          });
-          
-          loadedIndicesRef.current.add(index);
-        },
-        undefined, 
-        () => {
-          // ON ERROR: decorative placeholder remains
-        }
-      );
-    });
-  }, [texturePaths]);
+    // Iterate only through the available files, up to the maximum slot count
+    const limit = Math.min(fileList.length, totalSlots);
+    
+    for (let i = 0; i < limit; i++) {
+        const path = fileList[i];
+        // Add cache buster to force re-fetch if file changed
+        const versionedPath = `${path}?v=${Date.now()}`;
+        
+        loader.load(
+            versionedPath,
+            (loadedTexture) => {
+                // ON SUCCESS
+                loadedTexture.colorSpace = THREE.SRGBColorSpace;
+                
+                setTextures((prev) => {
+                    const newTextures = [...prev];
+                    newTextures[i] = loadedTexture;
+                    return newTextures;
+                });
+                
+                loadedIndicesRef.current.add(i);
+            },
+            undefined, 
+            () => {
+                // ON ERROR: decorative placeholder remains (already set in initial state)
+                console.warn(`Failed to load photo: ${path}`);
+            }
+        );
+    }
+  }, [fileList, totalSlots]);
 
-  // State for interaction logic
-  const idleTimer = useRef(0);
   const selectedIndex = useRef(-1);
 
   const borderGeometry = useMemo(() => new THREE.PlaneGeometry(1.2, 1.5), []);
   const photoGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
   const data = useMemo(() => {
-    return new Array(count).fill(0).map((_, i) => {
+    return new Array(totalSlots).fill(0).map((_, i) => {
       const chaosPos = new THREE.Vector3((Math.random()-0.5)*70, (Math.random()-0.5)*70, (Math.random()-0.5)*70);
       const h = CONFIG.tree.height; const y = (Math.random() * h) - (h / 2);
       const rBase = CONFIG.tree.radius;
@@ -106,7 +108,7 @@ const PhotoOrnaments = ({ state, rotationSpeed = 0, setZoomed }: PhotoOrnamentsP
 
       return {
         chaosPos, targetPos, scale: baseScale, weight,
-        textureIndex: i % textures.length,
+        textureIndex: i, // Direct mapping: slot 0 uses texture 0
         borderColor,
         currentPos: chaosPos.clone(),
         chaosRotation,
@@ -115,20 +117,17 @@ const PhotoOrnaments = ({ state, rotationSpeed = 0, setZoomed }: PhotoOrnamentsP
         wobbleSpeed: 0.5 + Math.random() * 0.5
       };
     });
-  }, [textures.length, count]);
+  }, [totalSlots, textures.length]); // Re-calc only if counts change
 
   useFrame((stateObj, delta) => {
     if (!groupRef.current) return;
     const isFormed = state === 'FORMED';
     const time = stateObj.clock.elapsedTime;
     
-    // --- 1. SELECTION LOGIC (Only in CHAOS mode) ---
-    // Calculate "Is Zooming" based on the state from the PREVIOUS frame
-    // This prevents the search loop from running while we are locked in a zoom,
-    // which fixes the flickering issue caused by position changes during zoom.
-    const isAlreadyZooming = idleTimer.current > 1.0 && selectedIndex.current !== -1;
+    const isZooming = selectedIndex.current !== -1 && zoomRequest;
 
-    if (!isFormed && !isAlreadyZooming) {
+    if (!isFormed && !isZooming) {
+      // Browsing mode: find the photo in the center of the screen
       let maxDot = -1;
       let bestIndex = -1;
       const camPos = stateObj.camera.position;
@@ -136,44 +135,23 @@ const PhotoOrnaments = ({ state, rotationSpeed = 0, setZoomed }: PhotoOrnamentsP
       stateObj.camera.getWorldDirection(camDir);
 
       groupRef.current.children.forEach((group, i) => {
-        // Use World Position for selection calculation
         const worldPos = new THREE.Vector3();
         group.getWorldPosition(worldPos);
-        
         const dirToPhoto = worldPos.sub(camPos).normalize();
         const dot = dirToPhoto.dot(camDir);
-        
-        // Threshold for "Center of screen"
         if (dot > maxDot && dot > 0.92) { 
           maxDot = dot;
           bestIndex = i;
         }
       });
-      
-      // Reset timer if we switched targets (prevents accidental zoom while sweeping)
-      if (bestIndex !== selectedIndex.current) {
-        idleTimer.current = 0;
-        selectedIndex.current = bestIndex;
-      }
+      selectedIndex.current = bestIndex;
     } else if (isFormed) {
-      idleTimer.current = 0;
       selectedIndex.current = -1;
     }
 
-    // Timer triggers only when hand is steady (speed ~ 0)
-    // We check speed OR if we are already locked in (isAlreadyZooming) to prevent dropout
-    if (Math.abs(rotationSpeed) < 0.002 && selectedIndex.current !== -1) {
-       idleTimer.current += delta;
-    } else {
-       // If user moves hand, break the lock
-       idleTimer.current = 0;
-    }
-
-    // Zoom triggers after steady selection
-    const isZooming = idleTimer.current > 1.0 && selectedIndex.current !== -1;
     if (setZoomed) setZoomed(isZooming);
 
-    // --- 2. UPDATE POSITIONS & VISUALS ---
+    // --- UPDATE POSITIONS & VISUALS ---
     groupRef.current.children.forEach((group, i) => {
       const objData = data[i];
       let target = isFormed ? objData.targetPos : objData.chaosPos;
@@ -190,23 +168,24 @@ const PhotoOrnaments = ({ state, rotationSpeed = 0, setZoomed }: PhotoOrnamentsP
           // Calculate World Position 15 units in front of camera
           const frontWorldPos = camPos.add(camDir.multiplyScalar(15));
           // Shift up slightly for better framing
-          frontWorldPos.y += 2.0;
+          frontWorldPos.y += 0.0; // Centered
 
-          // Convert World Position to Local Position (accounting for parent group offset)
-          target = groupRef.current!.worldToLocal(frontWorldPos.clone());
+          if (groupRef.current) {
+             target = groupRef.current.worldToLocal(frontWorldPos.clone());
+          }
 
-          // UNIFIED ZOOM SIZE
-          targetScale = 4.0;
+          targetScale = 5.0; 
 
-          // Face camera perfectly
-          const quaternion = new THREE.Quaternion();
-          quaternion.setFromRotationMatrix(stateObj.camera.matrixWorld);
-          group.quaternion.slerp(quaternion, delta * 10);
+          // FIX: Use quaternion copy instead of lookAt to ensure it is perfectly screen-aligned (upright)
+          group.quaternion.copy(stateObj.camera.quaternion);
+
       } else {
-          // Standard Movement
+          // Standard Movement (Non-zoomed)
           if (isFormed) {
              const targetLookPos = new THREE.Vector3(group.position.x * 2, group.position.y + 0.5, group.position.z * 2);
              group.lookAt(targetLookPos);
+             
+             // Wobble effect
              const wobbleX = Math.sin(time * objData.wobbleSpeed + objData.wobbleOffset) * 0.05;
              const wobbleZ = Math.cos(time * objData.wobbleSpeed * 0.8 + objData.wobbleOffset) * 0.05;
              group.rotation.x += wobbleX;
@@ -218,25 +197,25 @@ const PhotoOrnaments = ({ state, rotationSpeed = 0, setZoomed }: PhotoOrnamentsP
           }
       }
 
-      // Smooth Position Lerp
-      objData.currentPos.lerp(target, delta * (isSelected && isZooming ? 4.0 : (isFormed ? 0.8 * objData.weight : 0.5)));
+      // Position Lerp
+      const lerpSpeed = isSelected && isZooming ? 10.0 : (isFormed ? 0.8 * objData.weight : 0.5);
+      objData.currentPos.lerp(target, delta * lerpSpeed);
       group.position.copy(objData.currentPos);
 
-      // Smooth Scale Lerp
+      // Scale Lerp
       if (isSelected && !isZooming) {
-          targetScale = objData.scale * 1.3; // Slight highlight when hovering
+          targetScale = objData.scale * 1.3;
       }
       const currentScale = group.scale.x; 
       const newScale = THREE.MathUtils.lerp(currentScale, targetScale, delta * 4);
       group.scale.set(newScale, newScale, newScale);
 
-      // Handle Border Color / Glow
+      // Border Color
       group.children.forEach((sideGroup) => {
         const borderMesh = sideGroup.children[1] as THREE.Mesh; 
         if (borderMesh && borderMesh.material) {
            const mat = borderMesh.material as THREE.MeshStandardMaterial;
            if (isSelected) {
-              // Always use original border color for glow
               mat.color.set(objData.borderColor); 
               mat.emissive.set(objData.borderColor);
               mat.emissiveIntensity = isZooming ? 2.0 : 1.0;
@@ -248,7 +227,6 @@ const PhotoOrnaments = ({ state, rotationSpeed = 0, setZoomed }: PhotoOrnamentsP
         }
       });
       
-      // Render Order Hack for "Always on Top" when zooming
       if (isSelected && isZooming) {
         group.renderOrder = 999;
       } else {
@@ -274,7 +252,7 @@ const PhotoOrnaments = ({ state, rotationSpeed = 0, setZoomed }: PhotoOrnamentsP
                   emissive={CONFIG.colors.white} 
                   emissiveMap={tex} 
                   emissiveIntensity={isLoaded ? 0.5 : 0.1}
-                  side={THREE.DoubleSide} // Ensure visible from all angles
+                  side={THREE.DoubleSide} 
                   depthTest={true} 
                 />
               </mesh>

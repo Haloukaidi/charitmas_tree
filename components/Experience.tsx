@@ -1,5 +1,5 @@
 
-import { useRef, Suspense, useState, useEffect } from 'react';
+import { useRef, Suspense, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import {
   OrbitControls,
@@ -22,7 +22,7 @@ interface ExperienceProps extends BaseProps {
 }
 
 // --- Main Scene Experience ---
-const Experience = ({ state, rotationSpeed, setZoomed }: ExperienceProps) => {
+const Experience = ({ state, rotationSpeed, setZoomed, zoomRequest }: ExperienceProps) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const controlsRef = useRef<any>(null);
   // Track local zoomed state to animate DepthOfField
@@ -36,7 +36,10 @@ const Experience = ({ state, rotationSpeed, setZoomed }: ExperienceProps) => {
 
   useFrame(() => {
     if (controlsRef.current) {
-      controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + rotationSpeed);
+      // 关键修改：只有在未放大时才允许旋转
+      if (!isZoomedLocal) {
+        controlsRef.current.setAzimuthalAngle(controlsRef.current.getAzimuthalAngle() + rotationSpeed);
+      }
       controlsRef.current.update();
       // Disable controls when zooming to prevent fighting
       controlsRef.current.enabled = !isZoomedLocal;
@@ -56,7 +59,7 @@ const Experience = ({ state, rotationSpeed, setZoomed }: ExperienceProps) => {
         enableZoom={!isZoomedLocal} 
         minDistance={30} 
         maxDistance={120} 
-        autoRotate={rotationSpeed === 0 && state === 'FORMED'} 
+        autoRotate={rotationSpeed === 0 && state === 'FORMED' && !isZoomedLocal} 
         autoRotateSpeed={0.3} 
         maxPolarAngle={Math.PI / 1.7} 
       />
@@ -73,8 +76,13 @@ const Experience = ({ state, rotationSpeed, setZoomed }: ExperienceProps) => {
       <group position={[0, -6, 0]}>
         <Foliage state={state} />
         <Suspense fallback={null}>
-           {/* Pass rotationSpeed to handle selection logic */}
-           <PhotoOrnaments state={state} rotationSpeed={rotationSpeed} setZoomed={handleSetZoomed} />
+           {/* Pass rotationSpeed and zoomRequest to handle selection logic */}
+           <PhotoOrnaments 
+              state={state} 
+              rotationSpeed={rotationSpeed} 
+              setZoomed={handleSetZoomed} 
+              zoomRequest={zoomRequest} 
+            />
            <ChristmasElements state={state} />
            <FairyLights state={state} />
            <TopStar state={state} />
